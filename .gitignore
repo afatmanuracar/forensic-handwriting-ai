@@ -1,0 +1,17 @@
+# Sanal ortam
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Geçici/Görsel Çıktıları
+*.png
+*.jpg
+*.jpeg
+crop_char_*.png
+forensic_*.png
+debug_*.png
+
+# IDE ayarları
+.vscode/
+.idea/

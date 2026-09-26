@@ -1,0 +1,7 @@
+tensorflow>=2.15
+tensorflow-datasets
+opencv-python
+numpy
+matplotlib
+scikit-image
+pillow
