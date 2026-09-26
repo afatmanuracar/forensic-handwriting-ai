@@ -1,12 +1,6 @@
 """
-Görüntü Önişleme Modülü (Image Preprocessing)
-Kağıt/dijital ortamdaki el yazısı görüntülerini OCR öncesi temizler.
-
-Adımlar:
-1. Gri tonlama (grayscale)
-2. Gürültü temizleme (Gaussian Blur)
-3. Adaptive Thresholding (binarizasyon)
-4. Eğiklik düzeltme (deskew)
+Gelişmiş Adli Önişleme Modülü (Forensic Preprocessing)
+Bozuk, okunaksız veya gölgeli el yazılarını temizler ve adli analiz için hazırlar.
 """
 
 import cv2
@@ -20,111 +14,75 @@ def to_grayscale(image: np.ndarray) -> np.ndarray:
     return image
 
 
-def denoise(gray_image: np.ndarray, kernel_size: int = 5) -> np.ndarray:
-    """Gaussian Blur ile gürültü azaltma."""
-    return cv2.GaussianBlur(gray_image, (kernel_size, kernel_size), 0)
-
-
-def binarize(gray_image: np.ndarray, block_size: int = 11, c: int = 2) -> np.ndarray:
+def remove_shadows_and_contrast(gray_image: np.ndarray) -> np.ndarray:
     """
-    Adaptive Threshold ile siyah-beyaz (binary) görüntü üretir.
-    Sabit eşiklemeden farklı olarak, farklı ışıklandırma/gölge
-    koşullarında daha tutarlı sonuç verir.
+    Kriminal incelemede kağıttaki gölgeleri ve lekeleri kaldırır, 
+    yazı kontrastını artırır (CLAHE yöntemi).
     """
-    return cv2.adaptiveThreshold(
-        gray_image, 255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV,
-        block_size, c,
-    )
+    dilated_img = cv2.dilate(gray_image, np.ones((7, 7), np.uint8))
+    bg_img = cv2.medianBlur(dilated_img, 21)
+    diff_img = 255 - cv2.absdiff(gray_image, bg_img)
+    norm_img = cv2.normalize(diff_img, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1)
+    
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    return clahe.apply(norm_img)
 
 
-def deskew(binary_image: np.ndarray) -> np.ndarray:
+def binarize_otsu(gray_image: np.ndarray) -> np.ndarray:
     """
-    Görüntüdeki metnin eğikliğini tespit edip düzeltir.
-    minAreaRect ile beyaz piksellerin en küçük çevreleyen dikdörtgeninin
-    açısını bulur ve görüntüyü ters yönde döndürür.
+    Otsu Binarization: Okunaksız ve düzensiz ışıklandırılmış yazılarda 
+    en ideal siyah-beyaz eşiğini otomatik bulur.
     """
-    coords = np.column_stack(np.where(binary_image > 0))
-    if len(coords) == 0:
-        return binary_image
-
-    angle = cv2.minAreaRect(coords)[-1]
-    if angle < -45:
-        angle = -(90 + angle)
-    else:
-        angle = -angle
-
-    (h, w) = binary_image.shape[:2]
-    center = (w // 2, h // 2)
-    rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
-    rotated = cv2.warpAffine(
-        binary_image, rotation_matrix, (w, h),
-        flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE,
-    )
-    return rotated
+    blurred = cv2.GaussianBlur(gray_image, (5, 5), 0)
+    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    return binary
 
 
-def remove_small_noise(binary_image: np.ndarray, min_area: int = 25) -> np.ndarray:
+def skeletonize(binary_image: np.ndarray) -> np.ndarray:
     """
-    Bağlı bileşen (connected component) analizi ile min_area'dan küçük
-    beyaz lekeleri temizler. Defter çizgileri, kağıt lekeleri, nokta
-    gürültüsü gibi el yazısı OLMAYAN küçük parçaları eler.
+    Morphological Skeletonization (İskeletleştirme)
+    Harflerin kalınlığını 1 piksele indirir. Kalemin kağıt üzerindeki 
+    gerçek hareket yönünü ve adli vuruş karakteristiklerini ortaya çıkarır.
     """
-    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
-        binary_image, connectivity=8
-    )
+    skel = np.zeros(binary_image.shape, np.uint8)
+    element = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+    temp_img = binary_image.copy()
 
-    cleaned = np.zeros_like(binary_image)
-    for label_id in range(1, num_labels):  # 0 = arka plan, atla
-        area = stats[label_id, cv2.CC_STAT_AREA]
-        if area >= min_area:
-            cleaned[labels == label_id] = 255
+    while True:
+        eroded = cv2.erode(temp_img, element)
+        temp = cv2.dilate(eroded, element)
+        temp = cv2.subtract(temp_img, temp)
+        skel = cv2.bitwise_or(skel, temp)
+        temp_img = eroded.copy()
 
-    return cleaned
+        if cv2.countNonZero(temp_img) == 0:
+            break
+
+    return skel
 
 
-def bridge_strokes(binary_image: np.ndarray, kernel_size: int = None) -> np.ndarray:
+def forensic_preprocess_pipeline(image: np.ndarray) -> tuple:
     """
-    Morfolojik 'closing' (kapama) ile aynı harfe ait, aralarında küçük
-    boşluk olan vuruşları birleştirir (örn. 'T' harfinin dikey ve yatay
-    çizgileri arasındaki ince kopukluk).
-
-    kernel_size verilmezse görüntü yüksekliğine orantılı hesaplanır -
-    yüksek çözünürlüklü fotoğraflarda harfler de büyük piksel boyutunda
-    olacağından sabit küçük bir çekirdek yetersiz kalabilir.
-    """
-    if kernel_size is None:
-        kernel_size = max(5, binary_image.shape[0] // 15)
-        if kernel_size % 2 == 0:
-            kernel_size += 1  # tek sayı olmalı
-
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
-    return cv2.morphologyEx(binary_image, cv2.MORPH_CLOSE, kernel)
-
-
-def preprocess_pipeline(image: np.ndarray) -> np.ndarray:
-    """
-    Tüm önişleme adımlarını sırayla uygular ve temizlenmiş binary görüntüyü döner.
-    Sıra önemli: gürültü temizliği deskew'den önce (açı hesabını bozmasın),
-    vuruş birleştirme ise en son (harf içi kopuklukları kapatır).
+    Adli önişleme zinciri.
+    Dönüş: (temizlenmiş_binary_resim, harf_iskelet_resmi)
     """
     gray = to_grayscale(image)
-    denoised = denoise(gray)
-    binary = binarize(denoised)
-    noise_free = remove_small_noise(binary)
-    deskewed = deskew(noise_free)
-    bridged = bridge_strokes(deskewed)
-    return bridged
+    enhanced = remove_shadows_and_contrast(gray)
+    binary = binarize_otsu(enhanced)
+    skeleton = skeletonize(binary)
+    
+    return binary, skeleton
 
 
 if __name__ == "__main__":
-    # Hızlı test: bir görüntü dosyası üzerinde pipeline'ı dene
     import sys
     if len(sys.argv) > 1:
         img = cv2.imread(sys.argv[1])
-        result = preprocess_pipeline(img)
-        cv2.imwrite("preprocessed_output.png", result)
-        print("Önişleme tamamlandı: preprocessed_output.png")
+        binary, skel = forensic_preprocess_pipeline(img)
+        cv2.imwrite("forensic_binary.png", binary)
+        cv2.imwrite("forensic_skeleton.png", skel)
+        print("Adli önişleme tamamlandı:")
+        print("- Temizlenmiş Yazı: forensic_binary.png")
+        print("- Yazı İskeleti (Kalem İzi): forensic_skeleton.png")
     else:
         print("Kullanım: python preprocessing.py <görüntü_yolu>")
