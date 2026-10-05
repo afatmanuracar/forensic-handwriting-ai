@@ -1,17 +1,40 @@
-# Sanal ortam
-venv/
-.venv/
+# --- Python ---
 __pycache__/
 *.pyc
+*.pyo
+venv/
+.venv/
+env/
 
-# Geçici/Görsel Çıktıları
-*.png
-*.jpg
-*.jpeg
+# --- Veri setleri (büyük, indirilebilir - repoya koyma) ---
+sign_data/
+eng_data/
+English Handwritten Pages Dataset/
+
+# --- Eğitilmiş CNN modeli (büyük, train.py ile yeniden üretilebilir) ---
+models/
+
+# --- Önbellek (yeniden üretilebilir, kişisel yol bilgisi içerir) ---
+feature_cache.pkl
+
+# --- Kişisel test görüntüleri (isteğe bağlı, istersen bu satırları sil) ---
+test*.jpg
+test*.jpeg
+test*.png
 crop_char_*.png
-forensic_*.png
-debug_*.png
+sample_a.png
+sample_b.png
+preprocessed_output.png
 
-# IDE ayarları
+# --- IDE ---
 .vscode/
-.idea/
+*.code-workspace
+
+# --- İşletim sistemi ---
+.DS_Store
+Thumbs.db
+
+# NOT: signature_model.json, writer_model.json, domain_classifier.json ve
+# *_test_results.csv dosyaları BİLEREK buraya eklenmedi - küçük dosyalardır
+# (<2MB) ve rapor/savunma için sonuçların kanıtı niteliğindedir, repoda
+# kalmaları faydalıdır.

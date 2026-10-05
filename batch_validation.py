@@ -32,7 +32,8 @@ def load_images_from_folder(folder: str, limit: int = None) -> list:
     return files
 
 
-def average_score_for_pairs(paths_a: list, paths_b: list, max_pairs: int = 10) -> list:
+def average_score_for_pairs(paths_a: list, paths_b: list, max_pairs: int = 10,
+                            records: list = None, person: str = "", pair_type: str = "") -> list:
     """
     paths_a ve paths_b listelerinden çiftler oluşturup her biri için
     tutarlılık skorunu hesaplar. Aynı liste verilirse (gerçek-gerçek),
@@ -51,6 +52,14 @@ def average_score_for_pairs(paths_a: list, paths_b: list, max_pairs: int = 10) -
             metrics_b = analyze_document(path_b)
             comparison = compare_documents(metrics_a, metrics_b)
             scores.append(comparison["tutarlilik_skoru"])
+            if records is not None:
+                records.append({
+                    "kisi": person,
+                    "tur": pair_type,
+                    "ornek_a": os.path.basename(path_a),
+                    "ornek_b": os.path.basename(path_b),
+                    "skor": comparison["tutarlilik_skoru"],
+                })
             print(f"  {os.path.basename(path_a)} vs {os.path.basename(path_b)}: "
                   f"{comparison['tutarlilik_skoru']:.1f}")
         except Exception as e:
