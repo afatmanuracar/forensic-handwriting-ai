@@ -11,6 +11,8 @@
 ## Kurulum
 
 ```bash
+git clone https://github.com/afatmanuracar/forensic-handwriting-ai.git
+cd forensic-handwriting-ai
 python -m venv venv
 venv\Scripts\activate          # Windows
 pip install -r requirements.txt
